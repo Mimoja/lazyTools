@@ -8,69 +8,56 @@ use std::io::Read;
 use std::io::Write;
 use std::str::FromStr;
 use std::fmt::Display;
-use std::cmp::{min,max};
+use std::cmp;
+use clap::{App, ArgGroup, Arg};
 
 fn main() {
-    let matches = clap_app!(backlight =>
-        (version: crate_version!())
-        (about: crate_description!())
-        (@subcommand set =>
-            (about: "sets brightness")
-            (@arg VALUE: +required +allow_hyphen_values "Brightness specification")
-        )
-        (@subcommand get =>
-            (about: "gets brightness")
-            (@arg percentage: -p --percentage "Show percentage of maximum brightness")
-        )
-    ).get_matches();
+    let matches = App::new("backlight")
+        .version(crate_version!())
+        .about(crate_description!())
+        .arg(Arg::with_name("get")
+            .short("-g")
+            .long("--get")
+            .help("Displays brightness")
+            .takes_value(false))
+        .arg(Arg::with_name("set")
+            .short("-s")
+            .long("--set")
+            .help("Change brightness")
+            .value_name("[+|-]VALUE[%]")
+            .allow_hyphen_values(true)
+            .takes_value(true))
+        .arg(Arg::with_name("min")
+                 .short("-m")
+                 .long("--minimum-brightness")
+            .value_name("VALUE")
+                 .help("Don't allow brightness below VALUE")
+                 .default_value("1"))
+        .group(ArgGroup::with_name("op")
+                   .arg("set")
+                   .arg("get")
+                   .multiple(true))
+        .get_matches();
 
-    let backlight  = GenericBacklight::new("intel_backlight".into());
-    match matches.subcommand() {
-        ("set", Some(sub_matches)) => {
-            set_brightness(backlight, value_t!(sub_matches, "VALUE", BrightnessSpec).unwrap())
-                .unwrap_or_else(|e| exit_err(e));
-        }
-        ("get", Some(_)) => {
-            println!("{}", backlight.get().unwrap_or_else(|e| exit_err(e)));
-        }
-        _ => {}
+    if !matches.is_present("op") {
+        println!("{}", matches.usage());
+        std::process::exit(1);
     }
-    /*
+
+    let spec = value_t!(matches, "set", BrightnessSpec).unwrap_or_default();
+
     let paths = read_dir("/sys/class/backlight").unwrap();
     for path in paths {
         let backlight  = GenericBacklight::new(path.unwrap().file_name().into_string().unwrap());
-        backlight.set(backlight.max().unwrap()).unwrap_or_else(|e|exit_err(e));
+        let old = backlight.get().unwrap_or_else(|e| exit_err(e));
+        let max = backlight.max().unwrap_or_else(|e| exit_err(e));
+        let min = matches.value_of("min").unwrap().parse().unwrap_or(1);
+        let next = spec.apply(old, min, max);
+        if matches.is_present("get") {
+            println!("{}", next);
+        }
+        backlight.set(next).unwrap_or_else(|e| exit_err(e));
     }
-    */
-}
-
-fn set_brightness<B>(backlight: B, spec: BrightnessSpec) -> Result<u32, String>
-    where B : Backlight {
-    let next : u32 = match spec {
-        BrightnessSpec::Absolute(v) => {
-            v
-        },
-        BrightnessSpec::Relative(v) => {
-            let current = backlight.get()?;
-            (current as i32 + v) as u32
-        },
-        BrightnessSpec::Percentage(v) => {
-            let max = backlight.max()?;
-            (v * max)/100
-        },
-        BrightnessSpec::RelativePercentage(v) => {
-            let current = backlight.get()?;
-            if v > 0 {
-                max(current + 1, ((current as i32 * (100 + v))/100) as u32)
-            } else if v < 0 {
-                min(current - 1, ((current as i32 * (100 + v))/100) as u32)
-            } else {
-                current
-            }
-        },
-    };
-    backlight.set(next)?;
-    Ok(next)
 }
 
 fn exit_err<S: Display>(err: S) -> ! {
@@ -78,12 +65,38 @@ fn exit_err<S: Display>(err: S) -> ! {
     std::process::exit(1)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum BrightnessSpec {
     Absolute(u32),
     Relative(i32),
     Percentage(u32),
     RelativePercentage(i32),
+}
+
+impl BrightnessSpec {
+    fn apply(self, old: u32, min: u32, max: u32) -> u32 {
+        let next = match self {
+            BrightnessSpec::Absolute(v) => {
+                v
+            },
+            BrightnessSpec::Relative(v) => {
+                (old as i32 + v) as u32
+            },
+            BrightnessSpec::Percentage(v) => {
+                min + (v * (max - min))/100
+            },
+            BrightnessSpec::RelativePercentage(v) => {
+                if v > 0 {
+                    cmp::max(old + 1, ((old as i32 * (100 + v))/100) as u32)
+                } else if v < 0 {
+                    cmp::min(old - 1, ((old as i32 * (100 + v))/100) as u32)
+                } else {
+                    old
+                }
+            },
+        };
+        cmp::max(min, cmp::min(max, next))
+    }
 }
 
 impl FromStr for BrightnessSpec {
@@ -112,6 +125,12 @@ impl FromStr for BrightnessSpec {
             },
             None => Err(())
         }
+    }
+}
+
+impl Default for BrightnessSpec {
+    fn default() -> Self {
+        BrightnessSpec::Relative(0)
     }
 }
 
