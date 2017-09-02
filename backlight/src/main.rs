@@ -57,7 +57,9 @@ fn main() {
         if matches.is_present("get") {
             println!("{}: {}", &name, next);
         }
-        backlight.set(next).unwrap_or_else(exit_err);
+        if matches.is_present("set") {
+            backlight.set(next).unwrap_or_else(exit_err);
+        }
     }
 }
 
