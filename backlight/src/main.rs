@@ -45,16 +45,17 @@ fn main() {
     }
 
     let spec = value_t!(matches, "set", BrightnessSpec).unwrap_or_default();
+    let min = matches.value_of("min").unwrap().parse().unwrap_or(1);
 
     let paths = read_dir("/sys/class/backlight").unwrap();
     for path in paths {
-        let backlight  = GenericBacklight::new(path.unwrap().file_name().into_string().unwrap());
+        let name = path.unwrap().file_name().into_string().unwrap();
+        let backlight  = GenericBacklight::new(name.clone());
         let old = backlight.get().unwrap_or_else(|e| exit_err(e));
         let max = backlight.max().unwrap_or_else(|e| exit_err(e));
-        let min = matches.value_of("min").unwrap().parse().unwrap_or(1);
         let next = spec.apply(old, min, max);
         if matches.is_present("get") {
-            println!("{}", next);
+            println!("{}: {}", &name, next);
         }
         backlight.set(next).unwrap_or_else(|e| exit_err(e));
     }
