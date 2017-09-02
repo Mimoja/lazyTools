@@ -47,21 +47,21 @@ fn main() {
     let spec = value_t!(matches, "set", BrightnessSpec).unwrap_or_default();
     let min = matches.value_of("min").unwrap().parse().unwrap_or(1);
 
-    let paths = read_dir("/sys/class/backlight").unwrap();
+    let paths = read_dir("/sys/class/backlight").unwrap_or_else(exit_err);
     for path in paths {
         let name = path.unwrap().file_name().into_string().unwrap();
         let backlight  = GenericBacklight::new(name.clone());
-        let old = backlight.get().unwrap_or_else(|e| exit_err(e));
-        let max = backlight.max().unwrap_or_else(|e| exit_err(e));
+        let old = backlight.get().unwrap_or_else(exit_err);
+        let max = backlight.max().unwrap_or_else(exit_err);
         let next = spec.apply(old, min, max);
         if matches.is_present("get") {
             println!("{}: {}", &name, next);
         }
-        backlight.set(next).unwrap_or_else(|e| exit_err(e));
+        backlight.set(next).unwrap_or_else(exit_err);
     }
 }
 
-fn exit_err<S: Display>(err: S) -> ! {
+fn exit_err<E: Display, T>(err: E) -> T {
     eprintln!("{}", err);
     std::process::exit(1)
 }
@@ -181,25 +181,24 @@ impl GenericBacklight{
         let mut file_content = String::with_capacity(50);
         match file.read_to_string(&mut file_content){
             Ok(_) => {},
-            Err(_) => return Err(String::from("Could not read from file")),
-
+            Err(e) => return Err(format!("Error reading from {}: {}", &path, e)),
         };
 
         match file_content.trim().parse::<u32>() {
             Ok(result) => return Ok(result),
-            Err(_) => return Err(String::from("Could not parse value")),
+            Err(e) => return Err(format!("Error parsing value from {}: {}", &path, e)),
         }
     }
 
     fn write_u32_to_file(path : String, value : u32) -> Result<(), String>{
-        let mut file = match OpenOptions::new().write(true).open(path){
+        let mut file = match OpenOptions::new().write(true).open(&path){
             Ok(f) => f,
-            Err(_) => return Err(String::from("Could not open file")),
+            Err(e) => return Err(format!("Error opening {}: {}", &path, e)),
         };
         let value_string = format!("{}", value);
         match file.write_all(value_string.as_bytes()){
             Ok(_) => return Ok(()),
-            Err(_) => return Err(String::from("Could not write file")),
+            Err(e) => return Err(format!("Error writing to {}: {}", &path, e)),
         }
     }
 }
