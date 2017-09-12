@@ -1,0 +1,34 @@
+_pkgname=lazytools-backlight
+pkgname=$_pkgname-git
+pkgver=v0.1.0.bb965ec
+pkgrel=1
+pkgdesc="Command line tool to change backlight brightness."
+arch=('i686' 'x86_64')
+url="https://github.com/Mimoja/lazyTools/blob/master/backlight/"
+license=('UNKNOWN')
+groups=()
+depends=()
+makedepends=('git rust')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+backup=("etc/$_pkgname/$_pkgname.conf")
+source=("$_pkgname::git+https://github.com/Mimoja/lazyTools.git")
+md5sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/lazytools-backlight/backlight/"
+  git describe --tags | sed 's|-|.|g'
+}
+
+build() {
+  cd "$srcdir/lazytools-backlight/backlight/"
+  cargo build --release
+}
+
+package() {
+  cd "$srcdir/lazytools-backlight/backlight/"
+
+  install -Dm755 "$srcdir/lazytools-backlight/backlight/target/release/backlight" "$pkgdir/usr/bin/backlight"
+}
+
+# vim:set ts=2 sw=2 et:
