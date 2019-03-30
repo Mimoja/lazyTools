@@ -83,7 +83,7 @@ impl BrightnessSpec {
                 v
             },
             BrightnessSpec::Relative(v) => {
-                (old as i32 + v) as u32
+                cmp::max(0, old as i32 + v) as u32
             },
             BrightnessSpec::Percentage(v) => {
                 min + (v * (max - min))/100
