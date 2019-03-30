@@ -156,6 +156,10 @@ fn specparser_reject() {
     assert_eq!(BrightnessSpec::from_str("3.14159"), Err(()));
 }
 
+#[test]
+fn relative_doesnt_underflow() {
+    assert_eq!(BrightnessSpec::from_str("-100").unwrap().apply(20, 0, 100), 0)
+}
 
 trait Backlight{
     fn get(&self) -> Result<u32, String>;
